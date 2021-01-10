@@ -8,12 +8,47 @@
 #include <errno.h>
 #include <sys/ioctl.h>
 #include <iostream>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <string>
+#include "rclcpp/rclcpp.hpp"
+#include "std_msgs/msg/string.hpp"
+#include "std_msgs/msg/Float32.hpp"
+
 
 #define DEBUG 1
 
+using namespace std::chrono_literals;
+
 char buf[256];
-int main(int argc, char *argv[])
-{
+
+/* This example creates a subclass of Node and uses std::bind() to register a
+* member function as a callback from the timer. */
+
+class MinimalPublisher : public rclcpp::Node  {
+  public:
+    MinimalPublisher(self)
+    : Node("minimal_publisher"), count_(0)  {
+      publisher_ = this->create_publisher<std_msgs::msg::String>("topic", 10);
+      timer_ = this->create_wall_timer(
+      500ms, std::bind(&MinimalPublisher::timer_callback, this));
+      self.n = read(fd, buf, 128);
+    }
+
+  private:
+    void timer_callback()  {
+      auto message = std_msgs::msg::String();
+      message.data = "Hello, world! " + std::to_string(count_++);
+      RCLCPP_INFO(this->get_logger(), "Publishing: '%s'", message.data.c_str());
+      publisher_->publish(message);
+    }
+    rclcpp::TimerBase::SharedPtr timer_;
+    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr publisher_;
+    size_t count_;
+  };
+
+int main(int argc, char *argv[]) {
   int fd, n, i;
   struct termios toptions;
 
@@ -39,13 +74,16 @@ int main(int argc, char *argv[])
   /* commit the serial port settings */
   tcsetattr(fd, TCSANOW, &toptions);
 
+  rclcpp::init(argc, argv);
+  rclcpp::spin(std::make_shared<MinimalPublisher>());
+  rclcpp::shutdown();
+
   while(true) {
       n = read(fd, buf, 128);
       std::cout << buf;
       printf("%i bytes read, buffer contains: %s\n", n, buf);
   }
-  if(DEBUG)
-    {
+  if(DEBUG) {
       printf("Printing individual characters in buf as integers...\n\n");
       for(i=0; i<n; i++)
 	{
